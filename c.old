@@ -1,0 +1,3036 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+
+QString exp;
+QString exp_t;
+QString last_val;
+QString last_znak;
+QString memory;
+QStringList results;
+int results_n = 0;
+bool znak = false;
+
+typedef struct
+{
+    int chisl;
+    int znam;
+
+}drob;
+
+void to_dpob_struct(QStringList &list, QVector<drob> &arr)
+{
+    for ( int i = 0; i < list.size(); i++ )
+    {
+        if ( list[i].contains(QRegExp("[|]") ) )
+        {
+             QStringList drob = list[i].split(QRegExp("[|]"));
+             int chisl = drob[0].toInt();
+             int znam = drob[1].toInt();
+             arr[i].chisl = chisl;
+             arr[i].znam = znam;
+        }
+         else
+        {
+             arr[i].chisl = list[i].toInt();
+             arr[i].znam = 1;
+        }
+
+    }
+}
+
+QString evaluate(QString e)
+{
+    drob result;
+    int n = 0;
+    e.toLower();
+    if ( e == "0" )
+        return e;
+    QStringList list = e.split(QRegExp("[+\\-*/]"));
+
+    if ( list.size() == 2 && (e[e.length()-1] == '+' ||
+                              e[e.length()-1] == '-' ||
+                              e[e.length()-1] == '*' ||
+                              e[e.length()-1] == '/' ) )
+    {
+         list[1] = list[0];
+         last_val = QString(list[list.size()-1]);
+         last_znak = QString(e[e.length() - 1]);
+    }
+    else
+    {
+        if ( !e.contains(QRegExp("[+\\-*/]|sqr|rev")))
+        {
+            e.append(last_znak);
+            e.append(last_val);
+        if ( last_val != "")
+            list.append(last_val);
+        }
+        if ( !list[list.size()-1].contains(QRegExp("sqr|rev")) )
+        {
+            last_val = QString(list[list.size()-1]);
+            last_znak = QString(e[e.length() - last_val.length() - 1]);
+        }
+    }
+
+
+
+    for ( int i = 0; i < list.size(); i++ )
+    {
+        for ( int j = 0; j < list[i].length(); j++ )
+        {
+            if ( list[i][j] == 's' ) //sqr
+            {
+                QString t = list[i].mid(0, list[i].length() - 3);
+                QStringList temp;
+                QVector<drob> temp_arr(1);
+                temp.append(t);
+                to_dpob_struct(temp, temp_arr);
+                temp_arr[0].chisl *= temp_arr[0].chisl;
+                temp_arr[0].znam *= temp_arr[0].znam;
+
+                if ( temp_arr[0].znam == 1 )
+                    list[i] = QString::number(temp_arr[0].chisl);
+                else
+                    list[i] = QString::number(temp_arr[0].chisl) + "|" + QString::number(temp_arr[0].znam);
+            }
+            else if ( list[i][j] == 'r' ) //rev
+            {
+                QString t = list[i].mid(0, list[i].length() - 3);
+                QStringList temp;
+                QVector<drob> temp_arr(1);
+                temp.append(t);
+                to_dpob_struct(temp, temp_arr);
+
+                if ( temp_arr[0].znam == 1 )
+                {
+                    temp_arr[0].znam = temp_arr[0].chisl;
+                    temp_arr[0].chisl = 1;
+                }
+                else
+                {
+                    temp_arr[0].chisl = temp_arr[0].znam;
+                    temp_arr[0].znam = 1;
+                }
+
+                if ( temp_arr[0].znam == 1 )
+                    list[i] = QString::number(temp_arr[0].chisl);
+                else
+                    list[i] = QString::number(temp_arr[0].chisl) + "|" + QString::number(temp_arr[0].znam);
+            }
+        }
+    }
+    QVector<drob> arr(list.size());
+    to_dpob_struct(list, arr);
+    result = arr[0];
+    n = 1;
+    for ( int i = 1; i < e.size(); i++ )
+    {
+        if ( e[i] == '+' )
+        {
+            if ( result.znam == arr[n].znam )
+            {
+                result.chisl += arr[n].chisl;
+            }
+            else
+            {
+                result.chisl = result.chisl * arr[n].znam + arr[n].chisl * result.znam;
+                result.znam = result.znam * arr[n].znam;
+            }
+            n++;
+        }
+        else if ( e[i] == '-' )
+        {
+            if ( result.znam == arr[n].znam )
+            {
+                result.chisl -= arr[n].chisl;
+            }
+            else
+            {
+                result.chisl = result.chisl * arr[n].znam - arr[n].chisl * result.znam;
+                result.znam = result.znam * arr[n].znam;
+            }
+            n++;
+        }
+        else if ( e[i] == '*' )
+        {
+            result.chisl *= arr[n].chisl;
+            result.znam *= arr[n].znam;
+            n++;
+        }
+        else if ( e[i] == '/' )
+        {
+            result.chisl /= arr[n].chisl;
+            result.znam /= arr[n].znam;
+            n++;
+        }
+    }
+    if ( result.znam == 1 )
+        return QString::number(result.chisl);
+    else
+        return QString::number(result.chisl) + "|" + QString::number(result.znam);
+}
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    //this->setLayoutDirection(Qt::RightToLeft);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->clear();
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    //exp.clear();
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_pushButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    exp_t.append("0");
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    exp_t.append("1");
+    ui->exp_text->setText(exp_t);
+
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    exp_t.append("2");
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    exp_t.append('3');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    exp_t.append('4');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    exp_t.append('5');
+    ui->exp_text->setText(exp_t);
+
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    exp_t.append('6');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    exp_t.append('7');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    exp_t.append('8');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    exp_t.append('9');
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn_res_clicked() //result
+{
+    exp_t = ui->exp_text->toPlainText();
+    if (!znak)
+    {
+        exp.append(last_znak);
+        exp.append(last_val);
+    }
+    else
+    {
+        exp.append(exp_t);
+    }
+    exp_t.clear();
+    exp = evaluate(exp);
+    results.append(exp);
+    ui->exp_text->setText(exp);
+    znak = false;
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+    exp_t = ui->exp_text->toPlainText();
+    if ( exp[exp.length()-1]  != '+' )
+        exp.append("+");
+    else
+        exp.append(exp_t);
+    //exp = QString(exp_t);
+    if ( znak )
+        exp = evaluate(exp);
+    ui->exp_text->setText(exp);
+    exp.append('+');
+    exp_t.clear();
+    znak = true;
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    exp_t = ui->exp_text->toPlainText();
+    if ( exp[exp.length()-1]  != '-' )
+        exp.append("-");
+    else
+        exp.append(exp_t);
+    exp.append(exp_t);
+    //exp = QString(exp_t);
+    if ( znak )
+        exp = evaluate(exp);
+    ui->exp_text->setText(exp);
+    exp.append('-');
+    exp_t.clear();
+    znak = true;}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    exp_t = ui->exp_text->toPlainText();
+    if ( exp[exp.length()-1]  != '*' )
+        exp.append("*");
+    else
+        exp.append(exp_t);
+    exp.append(exp_t);
+    //exp.append(exp_t);
+    if ( znak )
+        exp = evaluate(exp);
+    ui->exp_text->setText(exp);
+    exp.append('*');
+    exp_t.clear();
+    znak = true;
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    exp_t = ui->exp_text->toPlainText();
+    if ( exp[exp.length()-1]  != '/' )
+        exp.append("/");
+    else
+        exp.append(exp_t);
+    exp.append(exp_t);
+    //exp = QString(exp_t);
+    if ( znak )
+        exp = evaluate(exp);
+    ui->exp_text->setText(exp);
+    exp.append('/');
+    exp_t.clear();
+    znak = true;
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    exp_t.remove(exp_t.length()-1, 1);
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    exp.clear();
+    exp_t.clear();
+    last_val.clear();
+    last_znak.clear();
+    results.clear();
+    results_n = 0;
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    exp_t.clear();
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    //exp_t.append("sqr");
+    exp = ui->exp_text->toPlainText();
+    exp.append("sqr");
+    exp = evaluate(exp);
+    //exp.append(exp_t);
+    ui->exp_text->setText(exp);
+    exp_t.clear();
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+        //exp_t.append("sqr");
+        exp = ui->exp_text->toPlainText();
+        exp.append("rev");
+        exp = evaluate(exp);
+        //exp.append(exp_t);
+        ui->exp_text->setText(exp);
+        exp_t.clear();
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    exp_t.append("|");
+    ui->exp_text->setText(exp_t);
+}
+
+void MainWindow::on_btn_history_clicked()
+{
+    if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    results_n++;
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        memory = QString(ui->exp_text->toPlainText());
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+        ui->check_m->setCheckable(true);
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory += QString("+" + ui->exp_text->toPlainText());
+        memory = evaluate(memory);
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+}
+
+void MainWindow::on_pushButton_2_clicked()
+{
+    QDialog *dialog = new QDialog;
+    QLabel *label = new QLabel(dialog);
+    dialog->resize(200, 100);
+    label->setGeometry(QRect(40,40,150,40));
+
+    label->setText("<font color=red>Sergey Sivulskiy 3101</font>");
+    dialog->show();
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        offset = QPoint();
+}
+
+
+
+
+
+#include "calculator.h"
+#include "ui_calculator.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+
+
+QString exp; //result exp
+QString exp_t; //current exp
+QChar zn;
+QString last_val;
+QChar last_oper;
+QString memory;
+QStringList results;
+int results_n = 0;
+bool znak = false;
+
+typedef struct
+{
+    int chisl;
+    int znam;
+}drob_t;
+
+
+drob_t to_drob_t(QString const value)
+{
+        drob_t val;
+        if ( value.contains(QRegExp("[|]") ) )
+        {
+             QStringList list = value.split(QRegExp("[|]"));
+             val.chisl = list[0].toInt();
+             val.znam = list[1].toInt();
+        }
+         else
+        {
+             val.chisl = value.toInt();
+             val.znam = 1;
+        }
+        return val;
+}
+
+QString evaluate(QString const &result, QString const &value, QChar operation) //evaluate result and value
+{
+    if ( result.isEmpty() )
+        return QString(value);
+    if ( value.isEmpty() )
+        return QString(result);
+
+    drob_t val;
+    drob_t res;
+    val =  to_drob_t(value);
+    res = to_drob_t(result);
+
+    if ( operation == '+' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl += val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam + val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+    }
+    else if ( operation == '-' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl -= val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam - val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+     }
+     else if ( operation == '*' )
+     {
+        res.chisl *= val.chisl;
+        res.znam *= val.znam;
+     }
+     else if ( operation == '/' )
+     {
+        res.chisl *= val.znam;
+        res.znam *= val.chisl;
+     }
+
+    if ( res.znam == 1 )
+        return QString::number(res.chisl);
+    else
+        return QString::number(res.chisl) + "|" + QString::number(res.znam);
+}
+
+QString evaluate_func(QString const &value, QChar func)
+{
+    drob_t val;
+    val = to_drob_t(value);
+    if ( func == 's')
+    {
+        val.chisl *= val.chisl;
+        val.znam *= val.znam;
+    }
+    else
+    {
+        int c = val.chisl;
+        val.chisl = val.znam;
+        val.znam = c;
+    }
+    if ( val.znam == 1 )
+        return QString::number(val.chisl);
+    else
+        return QString::number(val.chisl) + "|" + QString::number(val.znam);
+}
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->setValidator(new QRegExpValidator(QRegExp("[-]?[0-9]+[|]?[1-9]+")));
+    //ui->exp_text->setInputMask("99");
+    ui->exp_text->setPlaceholderText("0");
+    ui->exp_text->setAlignment(Qt::AlignRight);
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    exp = QString("");
+    zn = '+';
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_exitButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    exp_t.append("0");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    exp_t.append("1");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    exp_t.append("2");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    exp_t.append("3");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    exp_t.append("4");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    exp_t.append("5");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    exp_t.append("6");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    exp_t.append("7");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    exp_t.append("8");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    exp_t.append("9");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+    if ( !exp_t.isEmpty() )
+    {
+        exp_t = ui->exp_text->text();
+        exp = evaluate(exp, exp_t, '+');
+    }
+    else
+    {
+        //exp = evaluate(exp, exp, '+');
+    }
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    last_val = QString(exp_t);
+    last_oper = '+';
+    exp_t.clear();
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    exp_t = ui->exp_text->text();
+    exp = evaluate(exp, exp_t, '-');
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    last_val = QString(exp_t);
+    last_oper = '-';
+    exp_t.clear();
+}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    exp_t = ui->exp_text->text();
+    exp = evaluate(exp, exp_t, '*');
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    last_val = QString(exp_t);
+    last_oper = '*';
+    exp_t.clear();
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    exp_t = ui->exp_text->text();
+    exp = evaluate(exp, exp_t, '/');
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    last_val = QString(exp_t);
+    last_oper = '/';
+    exp_t.clear();
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    exp_t.append("|");
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    //exp = ui->exp_text->toPlainText();
+    exp_t = ui->exp_text->text();
+    if ( exp_t.isEmpty() )
+         exp_t = ui->exp_text->text();
+    exp_t = evaluate_func(exp_t, 's');
+    last_val = QString(exp_t);
+    last_oper = 's';
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+    if ( exp_t.isEmpty() )
+        exp_t = ui->exp_text->text();
+    exp_t = evaluate_func(exp_t, 'r');
+    last_val = QString(exp_t);
+    last_oper = 'r';
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+
+void MainWindow::on_btn_res_clicked() //result
+{
+    //if ( !exp_t.isEmpty() )
+        last_val = ui->exp_text->text();
+
+    if ( last_oper == 'r' || last_oper == 's' )
+    {
+        exp = evaluate_func(last_val, last_oper);
+        last_val = QString(exp);
+    }
+    else
+    {
+        exp = evaluate(exp, last_val, last_oper);
+    }
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    exp_t.clear();
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    exp_t.remove(exp_t.length()-1, 1);
+    ui->exp_text->setText(exp_t);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    exp.clear();
+    exp_t.clear();
+    last_val.clear();
+    last_oper = 0;
+    results.clear();
+    results_n = 0;
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    exp_t.clear();
+    ui->exp_text->clear();
+}
+
+
+void MainWindow::on_btn_history_clicked()
+{
+    if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    results_n++;
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        //memory = QString(ui->exp_text->toPlainText());
+        memory = QString(ui->exp_text->text().trimmed());
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+        ui->check_m->setCheckable(true);
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory = evaluate(memory, ui->exp_text->text().trimmed(), '+');
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+        ui->check_m->setCheckable(false);
+}
+
+void MainWindow::on_infoButton_clicked()
+{
+    QDialog *dialog = new QDialog;
+    QLabel *label = new QLabel(dialog);
+    dialog->resize(200, 100);
+    label->setGeometry(QRect(40,40,150,40));
+
+    label->setText("<font color=red>Sergey Sivulskiy 3101</font>");
+    dialog->show();
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        offset = QPoint();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include "calculator.h"
+#include "ui_calculator.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+
+
+QString exp; //result
+QString exp_add; //last added value
+QString exp_new; //new value
+QString str; //string QLineEdit
+bool second_operand; //second operand changed
+QChar last_oper; //last operation
+QString memory;
+QStringList results;
+int results_n = 0;
+bool znak = false;
+
+typedef struct
+{
+    int chisl;
+    int znam;
+}drob_t;
+
+
+drob_t to_drob_t(QString const value)
+{
+        drob_t val;
+        if ( value.contains(QRegExp("[|]") ) )
+        {
+             QStringList list = value.split(QRegExp("[|]"));
+             val.chisl = list[0].toInt();
+             val.znam = list[1].toInt();
+        }
+         else
+        {
+             val.chisl = value.toInt();
+             val.znam = 1;
+        }
+        return val;
+}
+
+QString evaluate(QString const &result, QString const &value, QChar operation) //evaluate result and value
+{
+    if ( result.isEmpty() )
+        return QString(value);
+    if ( value.isEmpty() )
+        return QString(result);
+
+    drob_t val;
+    drob_t res;
+    val =  to_drob_t(value);
+    res = to_drob_t(result);
+
+    if ( operation == '+' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl += val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam + val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+    }
+    else if ( operation == '-' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl -= val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam - val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+     }
+     else if ( operation == '*' )
+     {
+        res.chisl *= val.chisl;
+        res.znam *= val.znam;
+     }
+     else if ( operation == '/' )
+     {
+        res.chisl *= val.znam;
+        res.znam *= val.chisl;
+     }
+
+    if ( res.znam == 1 )
+        return QString::number(res.chisl);
+    else
+        return QString::number(res.chisl) + "|" + QString::number(res.znam);
+}
+
+QString evaluate_func(QString const &value, QChar func)
+{
+    drob_t val;
+    val = to_drob_t(value);
+    if ( func == 's')
+    {
+        val.chisl *= val.chisl;
+        val.znam *= val.znam;
+    }
+    else
+    {
+        int c = val.chisl;
+        val.chisl = val.znam;
+        val.znam = c;
+    }
+    if ( val.znam == 1 )
+        return QString::number(val.chisl);
+    else
+        return QString::number(val.chisl) + "|" + QString::number(val.znam);
+}
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->setValidator(new QRegExpValidator(QRegExp("[-]?[0-9]+[|]?[1-9]+")));
+    ui->exp_text->setPlaceholderText("0");
+    ui->exp_text->setAlignment(Qt::AlignRight);
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    exp = QString("");
+    exp_add = QString("");
+    exp_new = QString("");
+    second_operand = false;
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_exitButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    //str = ui->exp_text->text();
+    str.append("0");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("1");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("2");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("3");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("4");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("5");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("6");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("7");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("8");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    //str = ui->exp_text->text();
+    //ui->exp_text->clear();
+    str.append("9");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+    if ( !second_operand )
+    {
+        exp_new = ui->exp_text->text();
+        exp_add = QString(exp_new);
+        if ( exp.isEmpty() )
+            exp = evaluate(exp, exp_new, '+');
+        second_operand = true;
+    }
+    else
+    {
+        exp = evaluate(exp, exp_add, '+');
+        second_operand = false;
+        ui->exp_text->setText(exp);
+    }
+    last_oper = '+';
+    str.clear();
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    if ( !second_operand )
+    {
+        exp_new = ui->exp_text->text();
+        exp_add = QString(exp_new);
+        if ( exp.isEmpty() )
+            exp = evaluate(exp, exp_new, '-');
+        second_operand = true;
+    }
+    else
+    {
+        exp = evaluate(exp, exp_add, '-');
+        second_operand = false;
+        ui->exp_text->setText(exp);
+    }
+    last_oper = '-';
+    str.clear();
+}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    if ( !second_operand )
+    {
+        exp_new = ui->exp_text->text();
+        exp_add = QString(exp_new);
+        if ( exp.isEmpty() )
+            exp = evaluate(exp, exp_new, '*');
+        second_operand = true;
+    }
+    else
+    {
+        exp = evaluate(exp, exp_add, '*');
+        second_operand = false;
+        ui->exp_text->setText(exp);
+    }
+    last_oper = '*';
+    str.clear();
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    if ( !second_operand )
+    {
+        exp_new = ui->exp_text->text();
+        exp_add = QString(exp_new);
+        if ( exp.isEmpty() )
+            exp = evaluate(exp, exp_new, '/');
+        second_operand = true;
+    }
+    else
+    {
+        str = ui->exp_text->text();
+        exp = evaluate(exp, str, last_oper);
+        exp = evaluate(exp, exp_add, '/');
+        second_operand = false;
+        ui->exp_text->setText(exp);
+    }
+    last_oper = '/';
+    str.clear();
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    str = ui->exp_text->text();
+    str.append("|");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 's');
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 'r');
+    ui->exp_text->setText(str);
+}
+
+
+void MainWindow::on_btn_res_clicked() //result
+{
+
+    //if ( !exp_t.isEmpty() )
+        //last_val = ui->exp_text->text();
+
+    if ( last_oper == 'r' || last_oper == 's' )
+    {
+        exp = evaluate_func(exp, last_oper);
+    }
+    else
+    {
+        if ( !second_operand )
+        {
+            exp = evaluate(exp, exp_add, last_oper);
+        }
+        else
+        {
+            exp_new = ui->exp_text->text();
+            exp = evaluate(exp, exp_new, last_oper);
+            exp_add = QString(exp_new);
+            second_operand = false;
+        }
+    }
+    ui->exp_text->setText(exp);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    str = ui->exp_text->text();
+    str.remove(str.length()-1, 1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    str.clear();
+    second_operand = false;
+    last_oper = 0;
+    results.clear();
+    results_n = 0;
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    str.clear();
+    ui->exp_text->clear();
+}
+
+
+void MainWindow::on_btn_history_clicked()
+{
+    /*if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    results_n++;*/
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        /*//memory = QString(ui->exp_text->toPlainText());
+        memory = QString(ui->exp_text->text().trimmed());
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+        ui->check_m->setCheckable(true);*/
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory = evaluate(memory, ui->exp_text->text().trimmed(), '+');
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+        ui->check_m->setCheckable(false);
+}
+
+void MainWindow::on_infoButton_clicked()
+{
+    QDialog *dialog = new QDialog;
+    QLabel *label = new QLabel(dialog);
+    dialog->resize(200, 100);
+    label->setGeometry(QRect(40,40,150,40));
+
+    label->setText("<font color=red>Sergey Sivulskiy 3101</font>");
+    dialog->show();
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        offset = QPoint();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include "calculator.h"
+#include "ui_calculator.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+
+
+QString exp; //result
+QString exp_add; //last added value
+QString exp_new; //new value
+QString str; //string QLineEdit
+QChar last_oper; //last operation
+QString memory;
+QStringList results;
+int results_n = 0;
+bool result_state = false;
+bool operation; //push operation protect
+
+typedef struct
+{
+    int chisl;
+    int znam;
+}drob_t;
+
+
+drob_t to_drob_t(QString const value)
+{
+        drob_t val;
+        if ( value.contains(QRegExp("[|]") ) )
+        {
+             QStringList list = value.split(QRegExp("[|]"));
+             val.chisl = list[0].toInt();
+             val.znam = list[1].toInt();
+        }
+         else
+        {
+             val.chisl = value.toInt();
+             val.znam = 1;
+        }
+        return val;
+}
+
+QString evaluate(QString const &result, QString const &value, QChar operation) //evaluate result and value
+{
+    if ( result.isEmpty() )
+        return QString(value);
+    if ( value.isEmpty() )
+        return QString(result);
+
+    drob_t val;
+    drob_t res;
+    val =  to_drob_t(value);
+    res = to_drob_t(result);
+
+    if ( operation == '+' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl += val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam + val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+    }
+    else if ( operation == '-' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl -= val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam - val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+     }
+     else if ( operation == '*' )
+     {
+        res.chisl *= val.chisl;
+        res.znam *= val.znam;
+     }
+     else if ( operation == '/' )
+     {
+        res.chisl *= val.znam;
+        res.znam *= val.chisl;
+     }
+
+    if ( res.chisl % res.znam == 0 )
+    {
+        res.chisl /= res.znam;
+        res.znam = 1;
+    }
+
+    if ( res.znam == 1 )
+        return QString::number(res.chisl);
+    else
+        return QString::number(res.chisl) + "|" + QString::number(res.znam);
+}
+
+QString evaluate_func(QString const &value, QChar func)
+{
+    drob_t val;
+    val = to_drob_t(value);
+    if ( func == 's')
+    {
+        val.chisl *= val.chisl;
+        val.znam *= val.znam;
+    }
+    else
+    {
+        int c = val.chisl;
+        val.chisl = val.znam;
+        val.znam = c;
+    }
+    if ( val.znam == 1 )
+        return QString::number(val.chisl);
+    else
+        return QString::number(val.chisl) + "|" + QString::number(val.znam);
+}
+
+void check_operation(Ui::MainWindow *ui)
+{
+    exp_add = QString(exp_new);
+    exp_new = ui->exp_text->text();
+    exp = evaluate(exp, exp_new, last_oper);
+    ui->exp_text->setText(exp);
+    if ( exp_add.isEmpty() )
+    {
+        exp_add = QString(exp_new);
+        exp_new.clear();
+    }
+    str.clear();
+}
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->setValidator(new QRegExpValidator(QRegExp("^-?[0-9]+[|]?[1-9][0-9]*$")));
+    ui->exp_text->setPlaceholderText("0");
+    ui->exp_text->setAlignment(Qt::AlignRight);
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    last_oper = '+';
+    operation = false;
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_exitButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    operation = false;
+    result_state = false;
+    str.append("0");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("1");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("2");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("3");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("4");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("5");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("6");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("7");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("8");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("9");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '+';
+    operation = true;
+    result_state = false;
+
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '-';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '*';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '/';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    str = ui->exp_text->text();
+    if ( !str.isEmpty() )
+        str.append("|");
+    if ( str.count("|") > 1)
+        str.chop(1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 's');
+    ui->exp_text->setText(str);
+    result_state = false;
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 'r');
+    ui->exp_text->setText(str);
+    result_state = false;
+}
+
+
+void MainWindow::on_btn_res_clicked() //result
+{
+
+    if ( last_oper == 'r' || last_oper == 's' )
+    {
+        exp = evaluate_func(exp, last_oper);
+    }
+    else
+    {
+        if ( operation && !result_state )
+        {
+           exp_new = QString(exp);
+           exp = evaluate(exp, exp, last_oper);
+        }
+        else
+        {
+            if ( exp_new.isEmpty() )
+                exp_new = ui->exp_text->text();
+            exp = evaluate(exp, exp_new, last_oper);
+        }
+        operation = true;
+        result_state = true;
+    }
+    ui->exp_text->setText(exp);
+    str.clear();
+
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    str = ui->exp_text->text();
+    str.remove(str.length()-1, 1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    last_oper = '+';
+    operation = false;
+    str.clear();
+    results.clear();
+    results_n = 0;
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    str.clear();
+    ui->exp_text->clear();
+}
+
+
+void MainWindow::on_btn_history_clicked()
+{
+    /*if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    //ui->exp_text->setAlignment(Qt::AlignRight);
+    results_n++;*/
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        /*//memory = QString(ui->exp_text->toPlainText());
+        memory = QString(ui->exp_text->text().trimmed());
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+        ui->check_m->setCheckable(true);*/
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory = evaluate(memory, ui->exp_text->text().trimmed(), '+');
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+        ui->check_m->setCheckable(false);
+}
+
+void MainWindow::on_infoButton_clicked()
+{
+    QDialog *dialog = new QDialog;
+    QLabel *label = new QLabel(dialog);
+    dialog->resize(200, 100);
+    label->setGeometry(QRect(40,40,150,40));
+
+    label->setText("<font color=red>Sergey Sivulskiy 3101</font>");
+    dialog->show();
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        offset = QPoint();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include "calculator.h"
+#include "ui_calculator.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+#include <QMessageBox>
+#include <QKeyEvent>
+
+
+QString exp; //result
+QString exp_add; //last added value
+QString exp_new; //new value
+QString str; //string QLineEdit
+QChar last_oper; //last operation
+QString memory; //mem
+QStringList results; //history
+int results_n = 0; //count history
+bool result_state; //statee for result
+bool operation; //push operation protect
+
+
+typedef struct
+{
+    int chisl;
+    int znam;
+}drob_t;
+
+
+drob_t to_drob_t(QString const value)
+{
+        drob_t val;
+        if ( value.contains(QRegExp("[|]") ) )
+        {
+             QStringList list = value.split(QRegExp("[|]"));
+             val.chisl = list[0].toInt();
+             val.znam = list[1].toInt();
+        }
+         else
+        {
+             val.chisl = value.toInt();
+             val.znam = 1;
+        }
+        return val;
+}
+
+QString evaluate(QString const &result, QString const &value, QChar operation) //evaluate result and value
+{
+    if ( result.isEmpty() )
+        return QString(value);
+    if ( value.isEmpty() )
+        return QString(result);
+
+    drob_t val;
+    drob_t res;
+    val =  to_drob_t(value);
+    res = to_drob_t(result);
+
+    if ( operation == '+' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl += val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam + val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+    }
+    else if ( operation == '-' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl -= val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam - val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+     }
+     else if ( operation == '*' )
+     {
+        res.chisl *= val.chisl;
+        res.znam *= val.znam;
+     }
+     else if ( operation == '/' )
+     {
+        res.chisl *= val.znam;
+        res.znam *= val.chisl;
+     }
+
+    if ( res.chisl % res.znam == 0 )
+    {
+        res.chisl /= res.znam;
+        res.znam = 1;
+    }
+
+    if ( res.znam == 1 )
+        return QString::number(res.chisl);
+    else
+        return QString::number(res.chisl) + "|" + QString::number(res.znam);
+}
+
+QString evaluate_func(QString const &value, QChar func)
+{
+    drob_t val;
+    val = to_drob_t(value);
+    if ( func == 's')
+    {
+        val.chisl *= val.chisl;
+        val.znam *= val.znam;
+    }
+    else
+    {
+        int c = val.chisl;
+        val.chisl = val.znam;
+        val.znam = c;
+    }
+    if ( val.znam == 1 )
+        return QString::number(val.chisl);
+    else
+        return QString::number(val.chisl) + "|" + QString::number(val.znam);
+}
+
+void check_operation(Ui::MainWindow *ui)
+{
+    exp_add = QString(exp_new);
+    exp_new = ui->exp_text->text();
+    exp = evaluate(exp, exp_new, last_oper);
+    ui->exp_text->setText(exp);
+    if ( exp_add.isEmpty() )
+    {
+        exp_add = QString(exp_new);
+        exp_new.clear();
+    }
+    str.clear();
+}
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->setValidator(new QRegExpValidator(QRegExp("^-?[0-9]+[|]?[1-9][0-9]*$")));
+    ui->exp_text->setPlaceholderText("0");
+    ui->exp_text->setAlignment(Qt::AlignRight);
+    ui->exp_text->setFocus();
+    //ui->groupBox->setStyleeSheet("QGroupBox { border:2px solid gray;border-radius: 2px;background-color: rgb(123, 255, 255);}");
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    last_oper = '+';
+    operation = false;
+    result_state = false;
+
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_exitButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    operation = false;
+    result_state = false;
+    str.append("0");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("1");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("2");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("3");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("4");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("5");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("6");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("7");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("8");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("9");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '+';
+    operation = true;
+    result_state = false;
+
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '-';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '*';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '/';
+    result_state = false;
+    operation = true;
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    str = ui->exp_text->text();
+    if ( !str.isEmpty() )
+        str.append("|");
+    if ( str.count("|") > 1)
+        str.chop(1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 's');
+    ui->exp_text->setText(str);
+    result_state = false;
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 'r');
+    ui->exp_text->setText(str);
+    result_state = false;
+}
+
+
+void MainWindow::on_btn_res_clicked() //result
+{
+
+    if ( last_oper == 'r' || last_oper == 's' )
+    {
+        exp = evaluate_func(exp, last_oper);
+    }
+    else
+    {
+        if ( operation && !result_state )
+        {
+           exp_new = QString(exp);
+           exp = evaluate(exp, exp, last_oper);
+        }
+        else
+        {
+            if ( exp_new.isEmpty() )
+                exp_new = ui->exp_text->text();
+            exp = evaluate(exp, exp_new, last_oper);
+        }
+        results.append(exp);
+        operation = true;
+        result_state = true;
+    }
+    ui->exp_text->setText(exp);
+    str.clear();
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    str = ui->exp_text->text();
+    str.chop(1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    last_oper = '+';
+    operation = false;
+    result_state = false;
+    str.clear();
+    results.clear();
+    results_n = 0;
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    str.clear();
+    ui->exp_text->clear();
+}
+
+
+void MainWindow::on_btn_history_clicked()
+{
+    if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    results_n++;
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        memory = QString(ui->exp_text->text());
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+        ui->check_m->setCheckable(true);
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory = evaluate(memory, ui->exp_text->text(), '+');
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+        ui->check_m->setCheckable(false);
+}
+
+void MainWindow::on_infoButton_clicked()
+{
+    QMessageBox::information(this, "About", "<font size=6>Sergey Sivulskiy 3101</font>");
+    /*QDialog *dialog = new QDialog;
+    QLabel *label = new QLabel(dialog);
+    dialog->resize(400, 250);
+    label->setText("<font colo=red size=10>Sergey Sivulskiy 3101</font>");
+    label->adjustSize();
+    dialog->show();*/
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept(); // do not propagate
+        offset = QPoint();
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+        char c = event->key();
+        ui->exp_text->setFocus();
+        switch (c)
+                case '1':
+                    MainWindow::on_btn1_clicked();
+                    break;
+                case '2':
+                    MainWindow::on_btn2_clicked();
+                    break;
+        if ( (c >= '0' && c <= '9') || c == '|' )
+        {
+            operation = false;
+            result_state = false;
+        }
+        else if ( c == '+' )
+        {
+            MainWindow::on_btn_add_clicked();
+        }
+        else if ( c == '-' )
+        {
+            MainWindow::on_btn_sub_clicked();
+        }
+        else if ( c == '*' )
+        {
+            MainWindow::on_btn_mul_clicked();
+        }
+        else if ( c == '/' )
+        {
+            MainWindow::on_btn_div_clicked();
+        }
+        else if ( c == 5 ) //enter
+        {
+            MainWindow::on_btn_res_clicked();
+        }
+}
+
+
+#include "calculator.h"
+#include "ui_calculator.h"
+
+#include <string>
+#include <QString>
+#include <QList>
+#include <QRegExp>
+#include <QVector>
+#include <QDialog>
+#include <QLabel>
+#include <QMouseEvent>
+#include <QMessageBox>
+#include <QKeyEvent>
+
+
+QString exp; //result
+QString exp_add; //last added value
+QString exp_new; //new value
+QString str; //string QLineEdit
+QChar last_oper; //last operation
+QString memory; //mem
+QStringList results; //history
+int results_n = 0; //count history
+bool result_state; //statee for result
+bool operation; //push operation protect
+
+
+typedef struct
+{
+    int chisl;
+    int znam;
+}drob_t;
+
+
+drob_t to_drob_t(QString const value)
+{
+        drob_t val;
+        if ( value.contains(QRegExp("[|]") ) )
+        {
+             QStringList list = value.split(QRegExp("[|]"));
+             val.chisl = list[0].toInt();
+             val.znam = list[1].toInt();
+        }
+         else
+        {
+             val.chisl = value.toInt();
+             val.znam = 1;
+        }
+        return val;
+}
+
+QString evaluate(QString const &result, QString const &value, QChar operation) //evaluate result and value
+{
+    if ( result.isEmpty() )
+        return QString(value);
+    if ( value.isEmpty() )
+        return QString(result);
+
+    drob_t val;
+    drob_t res;
+    val =  to_drob_t(value);
+    res = to_drob_t(result);
+
+    if ( operation == '+' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl += val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam + val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+    }
+    else if ( operation == '-' )
+    {
+        if ( val.znam == res.znam )
+        {
+            res.chisl -= val.chisl;
+        }
+        else
+        {
+            res.chisl = res.chisl * val.znam - val.chisl * res.znam;
+            res.znam = res.znam * val.znam;
+        }
+     }
+     else if ( operation == '*' )
+     {
+        res.chisl *= val.chisl;
+        res.znam *= val.znam;
+     }
+     else if ( operation == '/' )
+     {
+        res.chisl *= val.znam;
+        res.znam *= val.chisl;
+     }
+
+    if ( res.znam == 0 || val.znam == 0 )
+    {
+        return QString("error");
+    }
+    else if ( res.chisl % res.znam == 0 )
+    {
+        res.chisl /= res.znam;
+        res.znam = 1;
+    }
+
+    if ( res.znam == 1 )
+        return QString::number(res.chisl);
+    else
+        return QString::number(res.chisl) + "|" + QString::number(res.znam);
+}
+
+QString evaluate_func(QString const &value, QChar func)
+{
+    drob_t val;
+    val = to_drob_t(value);
+    if ( func == 's')
+    {
+        val.chisl *= val.chisl;
+        val.znam *= val.znam;
+    }
+    else
+    {
+        int c = val.chisl;
+        val.chisl = val.znam;
+        val.znam = c;
+    }
+    if ( val.znam == 1 )
+        return QString::number(val.chisl);
+    else
+        return QString::number(val.chisl) + "|" + QString::number(val.znam);
+}
+
+void default_state(Ui::MainWindow *ui)
+{
+    exp.clear();
+    exp_add.clear();
+    exp_new.clear();
+    last_oper = '+';
+    operation = false;
+    result_state = false;
+    str.clear();
+    results.clear();
+    results_n = 0;
+    ui->check_m->setChecked(false);
+    ui->check_m->setCheckable(false);
+}
+
+void check_operation(Ui::MainWindow *ui)
+{
+    exp_add = QString(exp_new);
+    exp_new = QString(str);
+    exp = evaluate(exp, exp_new, last_oper);
+    ui->exp_text->setText(exp);
+    if ( exp.compare("error") == 0 )
+    {
+        default_state(ui);
+        return;
+    }
+
+    if ( exp_add.isEmpty() )
+    {
+        exp_add = QString(exp_new);
+        exp_new.clear();
+    }
+    str.clear();
+}
+
+
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    ui->check_m->setEnabled(false);
+    ui->exp_text->setValidator(new QRegExpValidator(QRegExp("^-?[0-9]+[|]?[1-9][0-9]*")));
+    ui->exp_text->setPlaceholderText("0");
+    ui->exp_text->setAlignment(Qt::AlignRight);
+
+    ui->exitButton->setToolTip("exit");
+    ui->infoButton->setToolTip("about");
+    ui->btn0->setToolTip("zero"); //help
+    ui->btn1->setToolTip("one");
+    ui->btn2->setToolTip("two");
+    ui->btn3->setToolTip("three");
+    ui->btn4->setToolTip("four");
+    ui->btn5->setToolTip("five");
+    ui->btn6->setToolTip("six");
+    ui->btn7->setToolTip("seven");
+    ui->btn8->setToolTip("eight");
+    ui->btn9->setToolTip("nine");
+    ui->btn_add->setToolTip("addition");
+    ui->btn_sub->setToolTip("subtraction");
+    ui->btn_mul->setToolTip("multiply");
+    ui->btn_div->setToolTip("divide");
+    ui->btn_sqr->setToolTip("square");
+    ui->btn_div->setToolTip("divide");
+    ui->btn_rev->setToolTip("reverse");
+    ui->btn_res->setToolTip("show result");
+    ui->btn_back_space->setToolTip("delete last digit");
+    ui->btn_clear->setToolTip("reset");
+    ui->btn_clear_e->setToolTip("clear field");
+    ui->btn_dot->setToolTip("dot");
+    ui->btn_history->setToolTip("show history");
+    ui->btn_mc->setToolTip("clear memory");
+    ui->btn_mr->setToolTip("show memory");
+    ui->btn_ms->setToolTip("save to memory");
+    ui->btn_m_plus->setToolTip("add to memory");
+    this->setAttribute(Qt::WA_TranslucentBackground); //transparent
+    this->setWindowFlags(Qt::FramelessWindowHint); //hide border widget
+    default_state(ui);
+    ui->exp_text->setFocus();
+
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::on_exitButton_clicked()
+{
+    close();
+}
+
+void MainWindow::on_btn0_clicked()
+{
+    operation = false;
+    result_state = false;
+    str.append("0");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn1_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("1");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn2_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("2");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn3_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("3");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn4_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("4");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn5_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("5");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn6_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("6");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn7_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("7");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn8_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("8");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn9_clicked()
+{
+    operation = false;
+    result_state = false;
+    exp_new.clear();
+    str.append("9");
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_add_clicked()
+{ 
+
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '+';
+    operation = true;
+    result_state = false;
+    ui->exp_text->setFocus();
+
+}
+
+
+void MainWindow::on_btn_sub_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '-';
+    result_state = false;
+    operation = true;
+    ui->exp_text->setFocus();
+}
+
+void MainWindow::on_btn_mul_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '*';
+    result_state = false;
+    operation = true;
+    ui->exp_text->setFocus();
+}
+
+void MainWindow::on_btn_div_clicked()
+{
+    if ( !operation )
+        check_operation(ui);
+    last_oper = '/';
+    result_state = false;
+    operation = true;
+    ui->exp_text->setFocus();
+}
+
+void MainWindow::on_btn_dot_clicked()
+{
+    if ( !str.isEmpty() )
+        str.append("|");
+    if ( str.count("|") > 1)
+        str.chop(1);
+    ui->exp_text->setText(str);
+    ui->exp_text->setFocus();
+}
+
+void MainWindow::on_btn_sqr_clicked()
+{
+    str = evaluate_func(str, 's');
+    ui->exp_text->setText(str);
+    result_state = false;
+}
+
+void MainWindow::on_btn_rev_clicked()
+{
+    str = ui->exp_text->text();
+    str = evaluate_func(str, 'r');
+    ui->exp_text->setText(str);
+    result_state = false;
+    ui->exp_text->setFocus();
+}
+
+
+void MainWindow::on_btn_res_clicked() //result
+{
+
+    if ( last_oper == 'r' || last_oper == 's' )
+    {
+        exp = evaluate_func(exp, last_oper);
+    }
+    else
+    {
+        if ( operation && !result_state )
+        {
+           exp_new = QString(exp);
+           exp = evaluate(exp, exp, last_oper);
+        }
+        else
+        {
+            if ( exp_new.isEmpty() )
+                exp_new = QString(str);
+            exp = evaluate(exp, exp_new, last_oper);
+        }
+        results.append(exp);
+        operation = true;
+        result_state = true;
+    }
+    ui->exp_text->setText(exp);
+    str.clear();
+}
+
+void MainWindow::on_btn_back_space_clicked()
+{
+    str.chop(1);
+    ui->exp_text->setText(str);
+}
+
+void MainWindow::on_btn_clear_clicked()
+{
+    default_state(ui);
+    ui->exp_text->clear();
+}
+
+void MainWindow::on_btn_clear_e_clicked()
+{
+    str.clear();
+    ui->exp_text->clear();
+}
+
+
+void MainWindow::on_btn_history_clicked()
+{
+    if ( !results.isEmpty() )
+    {
+    if ( results_n >= results.size() )
+        results_n = 0;
+    ui->exp_text->setText(results[results.size() - results_n - 1]);
+    results_n++;
+    }
+}
+
+void MainWindow::on_btn_ms_clicked()
+{
+        memory = QString(str);
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+}
+
+void MainWindow::on_btn_m_plus_clicked()
+{
+        memory = evaluate(memory, str, '+');
+        ui->check_m->setCheckable(true);
+        ui->check_m->setChecked(true);
+}
+
+void MainWindow::on_btn_mr_clicked()
+{
+        ui->exp_text->setText(memory);
+}
+
+void MainWindow::on_btn_mc_clicked()
+{
+        memory.clear();
+        ui->check_m->setChecked(false);
+        ui->check_m->setCheckable(false);
+}
+
+void MainWindow::on_infoButton_clicked()
+{
+    QMessageBox::information(this, "About", "<font size=6>Sergey Sivulskiy 3101</font>");
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+        event->accept();
+       if (isWindow())
+           offset = event->globalPos() - pos();
+       else
+           offset = event->pos();
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+        event->accept();
+        if (isWindow())
+            move(event->globalPos() - offset);
+        else
+            move(mapToParent(event->pos() - offset));
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+        event->accept();
+        offset = QPoint();
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+        ui->exp_text->setFocus();
+        char c = event->key();
+        if ( c == 5 ) //enter
+        {
+            MainWindow::on_btn_res_clicked();
+        }
+}
+
+
+void MainWindow::on_exp_text_textEdited(const QString &arg1)
+{
+    ui->exp_text->setFocus();
+    char c = arg1.toStdString().at(arg1.length()-1);
+
+    if ( (c >= '0' && c <= '9') || c == '|' )
+    {
+        operation = false;
+        result_state = false;
+    }
+
+    switch (c)
+    {
+            case Qt::Key_0:
+                MainWindow::on_btn0_clicked();
+                break;
+            case Qt::Key_1:
+                MainWindow::on_btn1_clicked();
+                break;
+            case Qt::Key_2:
+                MainWindow::on_btn2_clicked();
+                break;
+            case Qt::Key_3:
+                MainWindow::on_btn3_clicked();
+                break;
+            case Qt::Key_4:
+                MainWindow::on_btn4_clicked();
+                break;
+            case Qt::Key_5:
+                MainWindow::on_btn5_clicked();
+                break;
+            case Qt::Key_6:
+                MainWindow::on_btn6_clicked();
+                break;
+            case Qt::Key_7:
+                MainWindow::on_btn7_clicked();
+                break;
+            case Qt::Key_8:
+                MainWindow::on_btn8_clicked();
+                break;
+            case Qt::Key_9:
+                MainWindow::on_btn9_clicked();
+                break;
+            case '|':
+                MainWindow::on_btn_dot_clicked();
+                break;
+    }
+
+}
